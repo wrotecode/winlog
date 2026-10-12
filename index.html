@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WingLog — AI Bird Journal</title>
+  <meta name="description" content="WingLog is an open-source AI bird watching journal powered by local Ollama inference. Identify species, build your life list, and get off the screen." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-deep:      #0a0f0d;
+      --bg-card:      #111a14;
+      --bg-glass:     rgba(255,255,255,0.05);
+      --border-glass: rgba(255,255,255,0.08);
+      --forest:       #2d6a4f;
+      --moss:         #40916c;
+      --sage:         #74c69d;
+      --sky:          #48cae4;
+      --amber:        #f4a261;
+      --gold:         #ffd166;
+      --coral:        #e76f51;
+      --text-primary: #e8f5e9;
+      --text-dim:     #8aaa8e;
+      --text-muted:   #4a6b50;
+      --ai-glow:      rgba(72, 202, 228, 0.25);
+      --r:            16px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background: var(--bg-deep);
+      color: var(--text-primary);
+      font-family: 'Outfit', sans-serif;
+      overflow-x: hidden;
+    }
+
+    #bg-canvas {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    }
+
+    .app {
+      position: relative; z-index: 1;
+      max-width: 480px;
+      margin: 0 auto;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      padding-bottom: 80px;
+    }
+
+    /* TOP BAR */
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 20px 10px;
+    }
+    .logo {
+      font-size: 1.5rem; font-weight: 800;
+      background: linear-gradient(135deg, var(--sage), var(--sky));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      letter-spacing: -0.5px;
+    }
+    .logo span { -webkit-text-fill-color: var(--amber); }
+    .topbar-actions { display: flex; gap: 10px; }
+    .icon-btn {
+      width: 38px; height: 38px; border-radius: 50%;
+      background: var(--bg-glass); border: 1px solid var(--border-glass);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: all .2s; backdrop-filter: blur(12px);
+      font-size: 1rem;
+    }
+    .icon-btn:hover { background: rgba(255,255,255,0.1); transform: scale(1.08); }
+
+    /* GREETING */
+    .greeting { padding: 6px 20px 16px; }
+    .greeting-sub { font-size: .78rem; color: var(--text-dim); letter-spacing: .5px; text-transform: uppercase; }
+    .greeting-main { font-size: 1.6rem; font-weight: 700; margin-top: 2px; }
+    .greeting-main span { color: var(--sage); }
+
+    /* STAT STRIP */
+    .stat-strip {
+      display: flex; gap: 10px; padding: 0 20px 20px; overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .stat-strip::-webkit-scrollbar { display: none; }
+    .stat-chip {
+      flex-shrink: 0;
+      background: var(--bg-glass); border: 1px solid var(--border-glass);
+      border-radius: 30px; padding: 8px 16px;
+      backdrop-filter: blur(16px);
+      display: flex; align-items: center; gap: 8px;
+      font-size: .82rem;
+    }
+    .stat-chip .val { font-weight: 700; color: var(--gold); }
+
+    /* SECTION HEADER */
+    .section-hdr {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px 12px;
+    }
+    .section-hdr h2 { font-size: 1rem; font-weight: 600; }
+    .section-hdr a { font-size: .78rem; color: var(--sage); text-decoration: none; cursor: pointer; }
+
+    /* LOG ENTRIES */
+    .log-scroll {
+      display: flex; flex-direction: column; gap: 12px;
+      padding: 0 20px;
+    }
+    .log-entry {
+      background: var(--bg-card); border: 1px solid var(--border-glass);
+      border-radius: var(--r); padding: 14px;
+      display: flex; gap: 14px; align-items: center;
+      cursor: pointer; transition: all .2s;
+      position: relative; overflow: hidden;
+    }
+    .log-entry::before {
+      content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+      width: 3px; background: linear-gradient(to bottom, var(--sage), var(--sky));
+      border-radius: 3px 0 0 3px;
+    }
+    .log-entry:hover { background: rgba(64,145,108,.08); transform: translateX(3px); }
+    .log-entry.ai-id::before { background: linear-gradient(to bottom, var(--sky), var(--amber)); }
+
+    .entry-img {
+      width: 58px; height: 58px; border-radius: 12px;
+      object-fit: cover; background: linear-gradient(135deg, var(--forest), #1a3a2a);
+      flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+      font-size: 1.8rem; overflow: hidden;
+    }
+    .entry-body { flex: 1; min-width: 0; }
+    .entry-species { font-size: .95rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .entry-latin   { font-size: .72rem; color: var(--text-dim); font-style: italic; }
+    .entry-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+    .entry-tag {
+      font-size: .65rem; padding: 2px 8px; border-radius: 20px; font-weight: 600;
+      letter-spacing: .3px; text-transform: uppercase;
+    }
+    .tag-ai   { background: rgba(72,202,228,.15); color: var(--sky); border: 1px solid rgba(72,202,228,.3); }
+    .tag-loc  { background: rgba(116,198,157,.12); color: var(--sage); border: 1px solid rgba(116,198,157,.25); }
+    .tag-rare { background: rgba(244,162,97,.15); color: var(--amber); border: 1px solid rgba(244,162,97,.3); }
+    .entry-time { font-size: .7rem; color: var(--text-muted); margin-left: auto; flex-shrink: 0; }
+
+    /* FAB */
+    .fab {
+      position: fixed; bottom: 96px; right: calc(50% - 240px + 20px);
+      width: 60px; height: 60px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--moss), var(--sky));
+      border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.6rem;
+      box-shadow: 0 8px 30px rgba(72,202,228,.35), 0 4px 15px rgba(0,0,0,.3);
+      transition: all .3s;
+      z-index: 100;
+    }
+    .fab:hover { transform: scale(1.1) rotate(10deg); box-shadow: 0 12px 40px rgba(72,202,228,.5); }
+
+    /* BOTTOM NAV */
+    .bottom-nav {
+      position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+      width: 100%; max-width: 480px;
+      background: rgba(10,15,13,.92); border-top: 1px solid var(--border-glass);
+      backdrop-filter: blur(20px);
+      display: flex; align-items: center;
+      padding: 10px 0 calc(10px + env(safe-area-inset-bottom));
+      z-index: 50;
+    }
+    .nav-item {
+      flex: 1; display: flex; flex-direction: column; align-items: center;
+      gap: 4px; cursor: pointer; padding: 4px 0;
+      transition: all .2s;
+      font-size: .62rem; color: var(--text-muted); font-weight: 500;
+    }
+    .nav-item .nav-icon { font-size: 1.3rem; transition: transform .2s; }
+    .nav-item.active { color: var(--sage); }
+    .nav-item.active .nav-icon { transform: scale(1.15); }
+    .nav-item:hover { color: var(--text-dim); }
+
+    /* MODAL */
+    .modal-overlay {
+      position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,.7); backdrop-filter: blur(6px);
+      display: flex; align-items: flex-end; justify-content: center;
+      opacity: 0; pointer-events: none;
+      transition: opacity .3s;
+    }
+    .modal-overlay.open { opacity: 1; pointer-events: all; }
+    .modal-sheet {
+      width: 100%; max-width: 480px;
+      background: var(--bg-card);
+      border-radius: 28px 28px 0 0;
+      border: 1px solid var(--border-glass);
+      padding: 20px;
+      transform: translateY(100%);
+      transition: transform .35s cubic-bezier(.32,1,.23,1);
+      max-height: 90dvh;
+      overflow-y: auto;
+    }
+    .modal-overlay.open .modal-sheet { transform: translateY(0); }
+    .modal-handle {
+      width: 40px; height: 4px; border-radius: 2px;
+      background: var(--text-muted);
+      margin: 0 auto 20px;
+    }
+    .modal-title { font-size: 1.2rem; font-weight: 700; margin-bottom: 20px; }
+
+    /* FORM */
+    .form-group { margin-bottom: 16px; }
+    .form-label { font-size: .78rem; color: var(--text-dim); margin-bottom: 6px; display: block; font-weight: 500; }
+    .form-input, .form-textarea, .form-select {
+      width: 100%; background: rgba(255,255,255,.04);
+      border: 1px solid var(--border-glass);
+      border-radius: 12px; padding: 12px 14px;
+      color: var(--text-primary); font-family: 'Outfit', sans-serif;
+      font-size: .92rem; outline: none;
+      transition: border-color .2s;
+    }
+    .form-input:focus, .form-textarea:focus, .form-select:focus {
+      border-color: var(--sage); box-shadow: 0 0 0 3px rgba(116,198,157,.12);
+    }
+    .form-textarea { resize: vertical; min-height: 80px; }
+    .form-select { appearance: none; cursor: pointer; }
+
+    /* UPLOAD ZONE */
+    .upload-zone {
+      border: 2px dashed var(--border-glass);
+      border-radius: 16px; padding: 28px;
+      text-align: center; cursor: pointer;
+      transition: all .2s; position: relative;
+      overflow: hidden; background: rgba(255,255,255,.02);
+    }
+    .upload-zone:hover { border-color: var(--sage); background: rgba(116,198,157,.06); }
+    .upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+    .upload-zone-icon { font-size: 2.2rem; margin-bottom: 8px; }
+    .upload-zone-text { font-size: .85rem; color: var(--text-dim); }
+    .upload-zone-hint { font-size: .72rem; color: var(--text-muted); margin-top: 4px; }
+    .upload-preview {
+      width: 100%; max-height: 220px; object-fit: cover;
+      border-radius: 12px; margin-top: 10px; display: none;
+    }
+
+    /* AI PANEL */
+    .ai-panel {
+      background: linear-gradient(135deg, rgba(72,202,228,.08), rgba(116,198,157,.06));
+      border: 1px solid rgba(72,202,228,.2);
+      border-radius: 16px; padding: 16px; margin-bottom: 16px;
+    }
+    .ai-panel-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .ai-panel-icon { font-size: 1.3rem; }
+    .ai-panel-title { font-size: .92rem; font-weight: 600; color: var(--sky); }
+    .ai-panel-sub   { font-size: .72rem; color: var(--text-dim); }
+    .ai-status {
+      font-size: .8rem; padding: 8px 12px; border-radius: 8px;
+      background: rgba(255,255,255,.04); border: 1px solid var(--border-glass);
+      color: var(--text-dim); min-height: 36px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .ai-status.thinking { color: var(--sky); border-color: rgba(72,202,228,.3); }
+    .ai-status.success  { color: var(--sage); border-color: rgba(116,198,157,.3); }
+    .ai-status.error    { color: var(--coral); border-color: rgba(231,111,81,.3); }
+    .spinner {
+      width: 14px; height: 14px; border-radius: 50%;
+      border: 2px solid rgba(72,202,228,.3);
+      border-top-color: var(--sky);
+      animation: spin .7s linear infinite; flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* OLLAMA CONFIG */
+    .ollama-cfg { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+    .ollama-cfg .form-input { flex: 1; }
+    .btn-sm {
+      padding: 8px 14px; border-radius: 10px; border: none;
+      font-size: .8rem; font-weight: 600; cursor: pointer;
+      font-family: 'Outfit', sans-serif; transition: all .2s;
+    }
+    .btn-primary { background: linear-gradient(135deg, var(--moss), var(--forest)); color: #fff; }
+    .btn-primary:hover { opacity: .85; transform: scale(1.02); }
+    .btn-sky { background: rgba(72,202,228,.15); color: var(--sky); border: 1px solid rgba(72,202,228,.3); }
+    .btn-sky:hover { background: rgba(72,202,228,.25); }
+
+    /* SUBMIT BTN */
+    .btn-log {
+      width: 100%; padding: 16px; border-radius: 14px; border: none;
+      background: linear-gradient(135deg, var(--moss), var(--sky));
+      color: #fff; font-size: 1rem; font-weight: 700;
+      font-family: 'Outfit', sans-serif; cursor: pointer;
+      transition: all .3s; margin-top: 4px;
+    }
+    .btn-log:hover { opacity: .9; transform: translateY(-1px); box-shadow: 0 8px 25px rgba(72,202,228,.3); }
+
+    /* LIFE LIST */
+    .life-list { padding: 0 20px; }
+    .life-list-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 4px; }
+    .life-card {
+      background: var(--bg-card); border: 1px solid var(--border-glass);
+      border-radius: 16px; padding: 14px;
+      cursor: pointer; transition: all .2s;
+      position: relative; overflow: hidden;
+    }
+    .life-card:hover { transform: translateY(-3px); box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+    .life-card-emoji { font-size: 2.2rem; margin-bottom: 8px; display: block; }
+    .life-card-name  { font-size: .85rem; font-weight: 600; }
+    .life-card-latin { font-size: .68rem; color: var(--text-dim); font-style: italic; }
+    .life-card-count {
+      position: absolute; top: 10px; right: 10px;
+      background: rgba(116,198,157,.15); color: var(--sage);
+      border-radius: 20px; padding: 2px 8px; font-size: .65rem; font-weight: 700;
+    }
+
+    /* TIPS */
+    .tips-page { padding: 0 20px; }
+    .tip-card {
+      background: var(--bg-card); border: 1px solid var(--border-glass);
+      border-radius: 16px; padding: 16px; margin-bottom: 12px;
+      border-left: 3px solid var(--amber);
+    }
+    .tip-card.sky-border  { border-left-color: var(--sky); }
+    .tip-card.sage-border { border-left-color: var(--sage); }
+    .tip-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .tip-header-icon { font-size: 1.3rem; }
+    .tip-title { font-size: .9rem; font-weight: 600; }
+    .tip-body  { font-size: .82rem; color: var(--text-dim); line-height: 1.5; }
+
+    /* AI CHAT */
+    .chat-page { padding: 0 20px; display: flex; flex-direction: column; gap: 12px; }
+    .chat-ollama-bar {
+      background: var(--bg-card); border: 1px solid rgba(72,202,228,.2);
+      border-radius: 14px; padding: 12px 14px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .chat-ollama-bar .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #aaa; flex-shrink: 0; }
+    .chat-ollama-bar .status-dot.online  { background: var(--sage); box-shadow: 0 0 6px var(--sage); }
+    .chat-ollama-bar .status-dot.offline { background: var(--coral); }
+    .chat-ollama-label { font-size: .78rem; color: var(--text-dim); flex: 1; }
+    .chat-msgs {
+      background: var(--bg-card); border: 1px solid var(--border-glass);
+      border-radius: 16px; padding: 14px;
+      min-height: 200px; max-height: 340px; overflow-y: auto;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .msg { display: flex; flex-direction: column; max-width: 88%; }
+    .msg.user { align-self: flex-end; align-items: flex-end; }
+    .msg.ai   { align-self: flex-start; align-items: flex-start; }
+    .msg-bubble {
+      padding: 10px 14px; border-radius: 16px;
+      font-size: .85rem; line-height: 1.5;
+    }
+    .msg.user .msg-bubble {
+      background: linear-gradient(135deg, var(--forest), #1a4a38);
+      color: var(--text-primary); border-radius: 16px 16px 4px 16px;
+    }
+    .msg.ai .msg-bubble {
+      background: rgba(255,255,255,.05); border: 1px solid var(--border-glass);
+      color: var(--text-primary); border-radius: 16px 16px 16px 4px;
+    }
+    .msg-sender { font-size: .65rem; color: var(--text-muted); margin-top: 3px; }
+    .chat-input-row { display: flex; gap: 8px; }
+    .chat-input-row .form-input { flex: 1; }
+
+    /* PAGES */
+    .page { display: none; flex-direction: column; }
+    .page.active { display: flex; }
+
+    /* EMPTY STATE */
+    .empty-state { text-align: center; padding: 40px 20px; }
+    .empty-state-icon { font-size: 3rem; margin-bottom: 12px; opacity: .5; }
+    .empty-state-text { font-size: .92rem; color: var(--text-dim); }
+    .empty-state-sub  { font-size: .78rem; color: var(--text-muted); margin-top: 4px; }
+
+    /* DETAIL */
+    .detail-header { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
+    .detail-emoji  { font-size: 3rem; }
+    .detail-name   { font-size: 1.3rem; font-weight: 700; }
+    .detail-latin  { font-size: .8rem; color: var(--text-dim); font-style: italic; }
+    .detail-section { margin-bottom: 16px; }
+    .detail-section h4 { font-size: .8rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+    .detail-text { font-size: .88rem; line-height: 1.6; color: var(--text-primary); }
+    .detail-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+    .detail-chip {
+      padding: 4px 12px; border-radius: 20px; font-size: .72rem; font-weight: 600;
+      background: rgba(255,255,255,.05); border: 1px solid var(--border-glass); color: var(--text-dim);
+    }
+
+    /* ANIMATIONS */
+    .fade-in { animation: fadeUp .4s ease both; }
+    @keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+    .stagger-1 { animation-delay: .05s; }
+    .stagger-2 { animation-delay: .1s; }
+    .stagger-3 { animation-delay: .15s; }
+    .stagger-4 { animation-delay: .2s; }
+  </style>
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+
+<div class="app">
+
+  <!-- HOME PAGE -->
+  <div class="page active" id="page-home">
+    <div class="topbar fade-in">
+      <div class="logo">Wing<span>Log</span> 🦅</div>
+      <div class="topbar-actions">
+        <div class="icon-btn" id="btn-settings" title="Ollama Setup">⚙️</div>
+        <div class="icon-btn" id="btn-refresh" title="Refresh">🔄</div>
+      </div>
+    </div>
+    <div class="greeting fade-in stagger-1">
+      <div class="greeting-sub" id="greeting-time">Morning birder</div>
+      <div class="greeting-main">Today, <span id="date-display">Oct 12</span></div>
+    </div>
+    <div class="stat-strip fade-in stagger-2">
+      <div class="stat-chip">🦜 Sightings <span class="val" id="stat-total">0</span></div>
+      <div class="stat-chip">📋 Life List <span class="val" id="stat-species">0</span></div>
+      <div class="stat-chip">🤖 AI IDs <span class="val" id="stat-ai">0</span></div>
+      <div class="stat-chip">📍 Locations <span class="val" id="stat-locs">0</span></div>
+    </div>
+    <div class="section-hdr fade-in stagger-3">
+      <h2>📖 Recent Sightings</h2>
+      <a id="see-all-btn">See all →</a>
+    </div>
+    <div class="log-scroll fade-in stagger-4" id="recent-log"></div>
+  </div>
+
+  <!-- LOG PAGE -->
+  <div class="page" id="page-log">
+    <div class="topbar"><div class="logo">Wing<span>Log</span> 🦅</div></div>
+    <div class="section-hdr"><h2>📋 All Sightings</h2><a id="clear-log-btn">Clear all</a></div>
+    <div class="log-scroll" id="all-log"></div>
+  </div>
+
+  <!-- LIFE LIST PAGE -->
+  <div class="page" id="page-lifelist">
+    <div class="topbar"><div class="logo">Wing<span>Log</span> 🦅</div></div>
+    <div class="section-hdr">
+      <h2>🌟 My Life List</h2>
+      <span class="stat-chip">🦜 <span class="val" id="lifelist-count">0</span> species</span>
+    </div>
+    <div class="life-list">
+      <div class="life-list-grid" id="life-grid"></div>
+    </div>
+  </div>
+
+  <!-- AI CHAT PAGE -->
+  <div class="page" id="page-ai">
+    <div class="topbar"><div class="logo">Wing<span>Log</span> 🦅</div></div>
+    <div class="section-hdr"><h2>🤖 AI Field Guide</h2></div>
+    <div class="chat-page">
+      <div class="chat-ollama-bar">
+        <div class="status-dot" id="ollama-status-dot"></div>
+        <div class="chat-ollama-label">
+          <strong id="ollama-status-text">Checking Ollama…</strong><br>
+          <span id="ollama-model-text" style="font-size:.7rem">Local open-weight model</span>
+        </div>
+        <button class="btn-sm btn-sky" id="check-ollama-btn">Ping</button>
+      </div>
+      <div class="chat-msgs" id="chat-msgs">
+        <div class="msg ai">
+          <div class="msg-bubble">👋 Hi! I'm your local AI field guide, powered by Ollama. Ask me anything about birds — identification tips, habitat, calls, migration patterns, or what to look for in your area right now.</div>
+          <div class="msg-sender">WingLog AI · llava</div>
+        </div>
+      </div>
+      <div class="chat-input-row">
+        <input class="form-input" id="chat-input" placeholder="Ask about a bird…" />
+        <button class="btn-sm btn-primary" id="chat-send-btn">Send</button>
+      </div>
+      <div class="tip-card sky-border" style="margin-top:4px">
+        <div class="tip-header"><div class="tip-header-icon">🔒</div><div class="tip-title">100% Private & Free</div></div>
+        <div class="tip-body">WingLog uses <strong>Ollama</strong> running locally — your photos and chats never leave your machine. No API key, no subscription, no tracking. Pure open-source AI.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TIPS PAGE -->
+  <div class="page" id="page-tips">
+    <div class="topbar"><div class="logo">Wing<span>Log</span> 🦅</div></div>
+    <div class="section-hdr"><h2>🍂 October Birding Tips</h2></div>
+    <div class="tips-page" id="tips-container"></div>
+  </div>
+
+</div><!-- /app -->
+
+<button class="fab" id="fab-btn" title="Log a sighting">➕</button>
+
+<nav class="bottom-nav">
+  <div class="nav-item active" id="nav-home" data-page="home"><div class="nav-icon">🏠</div><span>Home</span></div>
+  <div class="nav-item" id="nav-log"      data-page="log">     <div class="nav-icon">📋</div><span>Log</span></div>
+  <div class="nav-item" id="nav-lifelist" data-page="lifelist"><div class="nav-icon">🌟</div><span>Life List</span></div>
+  <div class="nav-item" id="nav-ai"       data-page="ai">      <div class="nav-icon">🤖</div><span>AI Guide</span></div>
+  <div class="nav-item" id="nav-tips"     data-page="tips">    <div class="nav-icon">🍂</div><span>Tips</span></div>
+</nav>
+
+<!-- MODAL: LOG NEW SIGHTING -->
+<div class="modal-overlay" id="log-modal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">🦅 Log a Sighting</div>
+
+    <div class="ai-panel">
+      <div class="ai-panel-header">
+        <div class="ai-panel-icon">🤖</div>
+        <div>
+          <div class="ai-panel-title">AI Identification</div>
+          <div class="ai-panel-sub">Powered by local Ollama (LLaVA open-weight vision model)</div>
+        </div>
+      </div>
+      <div class="ollama-cfg">
+        <input class="form-input" id="ollama-url" value="http://localhost:11434" placeholder="Ollama URL" />
+        <select class="form-select" id="ollama-model" style="flex-shrink:0;width:130px">
+          <option value="llava">llava</option>
+          <option value="llava:13b">llava:13b</option>
+          <option value="llava:34b">llava:34b</option>
+          <option value="bakllava">bakllava</option>
+          <option value="moondream">moondream</option>
+          <option value="llama3.2-vision">llama3.2-vision</option>
+        </select>
+      </div>
+      <div class="upload-zone" id="upload-zone">
+        <input type="file" id="photo-input" accept="image/*" />
+        <div class="upload-zone-icon" id="upload-icon">📸</div>
+        <div class="upload-zone-text" id="upload-text">Tap to add a photo</div>
+        <div class="upload-zone-hint" id="upload-hint">JPG, PNG, WEBP — for AI identification</div>
+        <img id="upload-preview" class="upload-preview" alt="preview" />
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn-sm btn-sky" id="ai-identify-btn" style="flex:1">🔍 Identify with AI</button>
+        <button class="btn-sm btn-primary" id="ai-chat-mini-btn">💬 Chat</button>
+      </div>
+      <div class="ai-status" id="ai-status" style="margin-top:10px">
+        <span>📡 Upload a photo and press Identify</span>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="species-input">Species Name *</label>
+      <input class="form-input" id="species-input" placeholder="e.g. Peregrine Falcon" />
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="latin-input">Latin Name (optional)</label>
+      <input class="form-input" id="latin-input" placeholder="e.g. Falco peregrinus" />
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="location-input">Location</label>
+      <input class="form-input" id="location-input" placeholder="e.g. Acadia National Park" />
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="behavior-input">Behavior / Notes</label>
+      <textarea class="form-textarea" id="behavior-input" placeholder="What was it doing? Distinctive markings?"></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="rarity-select">Rarity</label>
+      <select class="form-select" id="rarity-select">
+        <option value="common">Common</option>
+        <option value="uncommon">Uncommon</option>
+        <option value="rare">Rare</option>
+        <option value="very-rare">Very Rare / Lifer!</option>
+      </select>
+    </div>
+    <button class="btn-log" id="save-sighting-btn">✅ Save Sighting</button>
+  </div>
+</div>
+
+<!-- MODAL: DETAIL VIEW -->
+<div class="modal-overlay" id="detail-modal">
+  <div class="modal-sheet" id="detail-sheet">
+    <div class="modal-handle"></div>
+    <div id="detail-content"></div>
+    <button class="btn-log" id="close-detail-btn" style="background:rgba(255,255,255,.06);color:var(--text-dim)">Close</button>
+  </div>
+</div>
+
+<!-- MODAL: SETTINGS / OLLAMA SETUP -->
+<div class="modal-overlay" id="settings-modal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">⚙️ Ollama Setup Guide</div>
+    <div class="tip-card sage-border" style="margin-bottom:16px">
+      <div class="tip-header"><div class="tip-header-icon">🌐</div><div class="tip-title">What is Ollama?</div></div>
+      <div class="tip-body">Ollama lets you run open-weight AI models like <strong>LLaVA</strong> entirely on your own laptop — no cloud, no API key, no cost. WingLog uses it to identify birds from photos.</div>
+    </div>
+    <div class="detail-section">
+      <h4>Install Steps</h4>
+      <div class="detail-text" style="font-size:.82rem;line-height:1.9">
+        1️⃣ Download from <strong>ollama.com</strong><br>
+        2️⃣ Pull a vision model:<br>
+        <code style="background:rgba(255,255,255,.08);padding:3px 8px;border-radius:6px;display:inline-block;margin:4px 0">ollama pull llava</code><br>
+        3️⃣ Start with CORS enabled:<br>
+        <code style="background:rgba(255,255,255,.08);padding:3px 8px;border-radius:6px;display:inline-block;margin:4px 0;font-size:.75rem">OLLAMA_ORIGINS=* ollama serve</code><br>
+        4️⃣ Return here and tap <strong>🔍 Identify with AI</strong>!
+      </div>
+    </div>
+    <div class="detail-section">
+      <h4>Recommended Vision Models</h4>
+      <div class="detail-chip-row">
+        <span class="detail-chip">llava (7B) — fast</span>
+        <span class="detail-chip">llava:13b — accurate</span>
+        <span class="detail-chip">llama3.2-vision — latest</span>
+        <span class="detail-chip">moondream — tiny</span>
+      </div>
+    </div>
+    <div class="detail-section">
+      <h4>Why Open-Source AI?</h4>
+      <div class="detail-text" style="font-size:.82rem;line-height:1.6">Your bird photos and journal entries <strong>never leave your device</strong>. No subscription, no usage limits, no data harvesting. WingLog works on the trail with no internet — just your laptop and Ollama.</div>
+    </div>
+    <button class="btn-log" id="close-settings-btn" style="margin-top:8px">Got it! Let's go birding 🦅</button>
+  </div>
+</div>
+
+<script>
+// ══ BACKGROUND PARTICLES ══════════════════════════════
+(function() {
+  const canvas = document.getElementById('bg-canvas');
+  const ctx    = canvas.getContext('2d');
+  let W, H;
+  const particles = [];
+
+  function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+  resize();
+  window.addEventListener('resize', resize);
+
+  for (let i = 0; i < 55; i++) {
+    particles.push({
+      x: Math.random() * window.innerWidth,
+      y: Math.random() * window.innerHeight,
+      r: Math.random() * 1.8 + .3,
+      vx: (Math.random() - .5) * .3,
+      vy: (Math.random() - .5) * .3,
+      alpha: Math.random(),
+      dalpha: (Math.random() - .5) * .008,
+      hue: [120, 170, 200, 45][Math.floor(Math.random() * 4)]
+    });
+  }
+
+  function drawOrb(x, y, r, color) {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, color);
+    g.addColorStop(1, 'transparent');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  }
+
+  function animate() {
+    ctx.clearRect(0, 0, W, H);
+    drawOrb(W * .15, H * .2, 280, 'rgba(45,106,79,.07)');
+    drawOrb(W * .85, H * .7, 320, 'rgba(72,202,228,.05)');
+    drawOrb(W * .5,  H * .5, 200, 'rgba(116,198,157,.04)');
+    particles.forEach(p => {
+      p.x += p.vx; p.y += p.vy;
+      p.alpha += p.dalpha;
+      if (p.alpha <= 0) { p.alpha = 0; p.dalpha = Math.abs(p.dalpha); }
+      if (p.alpha >= 1) { p.alpha = 1; p.dalpha = -Math.abs(p.dalpha); }
+      if (p.x < 0) p.x = W; if (p.x > W) p.x = 0;
+      if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = `hsla(${p.hue},70%,60%,${p.alpha * .5})`;
+      ctx.fill();
+    });
+    requestAnimationFrame(animate);
+  }
+  animate();
+})();
+
+// ══ STATE ════════════════════════════════════════════
+let sightings  = JSON.parse(localStorage.getItem('winglog_sightings') || '[]');
+let ollamaUrl  = localStorage.getItem('winglog_ollama_url')   || 'http://localhost:11434';
+let ollamaMdl  = localStorage.getItem('winglog_ollama_model') || 'llava';
+let _aiDesc    = '', _aiTip = '';
+let photob64   = null;
+
+function persist() {
+  localStorage.setItem('winglog_sightings',    JSON.stringify(sightings));
+  localStorage.setItem('winglog_ollama_url',   ollamaUrl);
+  localStorage.setItem('winglog_ollama_model', ollamaMdl);
+}
+
+// ══ GREETING ════════════════════════════════════════
+(function() {
+  const now = new Date();
+  const h   = now.getHours();
+  const g   = h < 12 ? '🌅 Morning birder' : h < 17 ? '☀️ Afternoon birder' : '🌙 Evening birder';
+  document.getElementById('greeting-time').textContent = g;
+  document.getElementById('date-display').textContent  = now.toLocaleDateString('en-US', { month:'short', day:'numeric' });
+})();
+
+// ══ HELPERS ════════════════════════════════════════
+const BIRD_EMOJIS = ['🦅','🦜','🦢','🦩','🦚','🦉','🐦','🦆','🐧','🕊️','🦤','🦃'];
+function birdEmoji(name) {
+  if (!name) return '🐦';
+  const n = name.toLowerCase();
+  if (/falcon|hawk|eagle/.test(n)) return '🦅';
+  if (/owl/.test(n)) return '🦉';
+  if (/parrot|macaw/.test(n)) return '🦜';
+  if (/duck|mallard/.test(n)) return '🦆';
+  if (/swan/.test(n)) return '🦢';
+  if (/flamingo|heron|egret/.test(n)) return '🦩';
+  if (/penguin/.test(n)) return '🐧';
+  if (/pigeon|dove/.test(n)) return '🕊️';
+  if (/peacock/.test(n)) return '🦚';
+  if (/turkey/.test(n)) return '🦃';
+  if (/toucan/.test(n)) return '🦤';
+  let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(0)) | 0;
+  return BIRD_EMOJIS[Math.abs(h) % BIRD_EMOJIS.length];
+}
+
+function timeAgo(ts) {
+  const d = Date.now() - ts, m = Math.floor(d / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const hh = Math.floor(m / 60);
+  if (hh < 24) return `${hh}h ago`;
+  return `${Math.floor(hh / 24)}d ago`;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+}
+
+// ══ RENDER ════════════════════════════════════════
+function renderEntry(s) {
+  const e  = birdEmoji(s.species);
+  const img = s.photoThumb
+    ? `<div class="entry-img"><img src="${s.photoThumb}" style="width:100%;height:100%;object-fit:cover;border-radius:12px" /></div>`
+    : `<div class="entry-img">${e}</div>`;
+  const aiTag   = s.aiIdentified ? `<span class="entry-tag tag-ai">🤖 AI ID</span>` : '';
+  const locTag  = s.location     ? `<span class="entry-tag tag-loc">📍 ${s.location}</span>` : '';
+  const rareTag = (s.rarity === 'rare' || s.rarity === 'very-rare')
+    ? `<span class="entry-tag tag-rare">⭐ ${s.rarity === 'very-rare' ? 'LIFER' : 'Rare'}</span>` : '';
+  return `
+    <div class="log-entry ${s.aiIdentified ? 'ai-id' : ''}" onclick="openDetail('${s.id}')">
+      ${img}
+      <div class="entry-body">
+        <div class="entry-species">${s.species || 'Unknown'}</div>
+        <div class="entry-latin">${s.latin || ''}</div>
+        <div class="entry-row">${aiTag}${locTag}${rareTag}<span class="entry-time">${timeAgo(s.timestamp)}</span></div>
+      </div>
+    </div>`;
+}
+
+function emptyState(icon, text, sub) {
+  return `<div class="empty-state"><div class="empty-state-icon">${icon}</div><div class="empty-state-text">${text}</div><div class="empty-state-sub">${sub}</div></div>`;
+}
+
+function renderRecent() {
+  const el  = document.getElementById('recent-log');
+  const rec = [...sightings].reverse().slice(0, 6);
+  el.innerHTML = rec.length ? rec.map(renderEntry).join('') : emptyState('🌿','No sightings yet','Tap ➕ to log your first bird!');
+}
+
+function renderAll() {
+  const el  = document.getElementById('all-log');
+  const all = [...sightings].reverse();
+  el.innerHTML = all.length ? all.map(renderEntry).join('') : emptyState('📋','Your log is empty','Start birding and log your discoveries!');
+}
+
+function renderLifeList() {
+  const grid = document.getElementById('life-grid');
+  const cntEl = document.getElementById('lifelist-count');
+  const map   = {};
+  sightings.forEach(s => {
+    const k = (s.species || 'Unknown').toLowerCase();
+    if (!map[k]) map[k] = { ...s, count: 0 };
+    map[k].count++;
+  });
+  const species = Object.values(map);
+  cntEl.textContent = species.length;
+  document.getElementById('stat-species').textContent = species.length;
+  if (!species.length) {
+    grid.innerHTML = `<div style="grid-column:1/-1">${emptyState('🌟','Life list is empty','Every bird you log appears here')}</div>`;
+    return;
+  }
+  grid.innerHTML = species.map(s => `
+    <div class="life-card" onclick="openDetail('${s.id}')">
+      <span class="life-card-count">×${s.count}</span>
+      <span class="life-card-emoji">${birdEmoji(s.species)}</span>
+      <div class="life-card-name">${s.species}</div>
+      <div class="life-card-latin">${s.latin || ''}</div>
+    </div>`).join('');
+}
+
+function updateStats() {
+  document.getElementById('stat-total').textContent = sightings.length;
+  document.getElementById('stat-ai').textContent    = sightings.filter(s => s.aiIdentified).length;
+  const locs = new Set(sightings.map(s => s.location).filter(Boolean));
+  document.getElementById('stat-locs').textContent  = locs.size;
+  renderLifeList();
+}
+
+// ══ TIPS ════════════════════════════════════════
+const TIPS = [
+  { icon:'🍂', title:'Fall Migration Peak',        body:'October is prime hawk watching! Broad-winged and Sharp-shinned Hawks funnel along ridgelines. Find a hawk watch site near you.', border:'' },
+  { icon:'🌅', title:'Best Birding Hours',          body:'The first 2–3 hours after sunrise are most active. Birds feed, call, and establish territory — perfect for watching and listening.', border:'sky-border' },
+  { icon:'👂', title:'Learning Calls',              body:'You can ID 80% of species by ear alone. Practice common backyard birds first. Apps like Merlin Bird ID have free audio ID.', border:'sage-border' },
+  { icon:'🗺️', title:'Find Hotspots',               body:'eBird.org shows local hotspots and recent sightings. Filter by this week to find what\'s around right now.', border:'' },
+  { icon:'🌿', title:'Habitat Clues',               body:'Open fields → sparrows & raptors. Dense brush → wrens & warblers. Water → herons, ducks, sandpipers.', border:'sky-border' },
+  { icon:'📏', title:'Size & Shape First',          body:'Before color, note size: sparrow, robin, or crow-sized? Bill shape and tail length are often more reliable than color.', border:'sage-border' },
+  { icon:'🎒', title:'Trail Gear Essentials',       body:'8×42 binoculars are the sweet spot. Add Sibley\'s field guide, wear muted colors, and move slowly. WingLog works offline once loaded!', border:'' },
+  { icon:'🤖', title:'How WingLog AI Works',        body:'WingLog uses LLaVA — a free, open-weight vision model running on your own hardware via Ollama. Your photos never leave your device.', border:'sky-border' },
+];
+
+document.getElementById('tips-container').innerHTML = TIPS.map(t => `
+  <div class="tip-card ${t.border}">
+    <div class="tip-header"><div class="tip-header-icon">${t.icon}</div><div class="tip-title">${t.title}</div></div>
+    <div class="tip-body">${t.body}</div>
+  </div>`).join('');
+
+// ══ NAVIGATION ══════════════════════════════════
+const PAGES = ['home','log','lifelist','ai','tips'];
+function showPage(name) {
+  PAGES.forEach(p => {
+    document.getElementById(`page-${p}`).classList.toggle('active', p === name);
+    document.getElementById(`nav-${p}`).classList.toggle('active', p === name);
+  });
+  if (name === 'home')     renderRecent();
+  if (name === 'log')      renderAll();
+  if (name === 'lifelist') renderLifeList();
+  if (name === 'ai')       checkOllama();
+}
+PAGES.forEach(p => document.getElementById(`nav-${p}`).addEventListener('click', () => showPage(p)));
+document.getElementById('see-all-btn').addEventListener('click', () => showPage('log'));
+
+// ══ MODALS ══════════════════════════════════════
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+document.querySelectorAll('.modal-overlay').forEach(o =>
+  o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); }));
+
+document.getElementById('fab-btn').addEventListener('click', () => { resetForm(); openModal('log-modal'); });
+document.getElementById('btn-settings').addEventListener('click',   () => openModal('settings-modal'));
+document.getElementById('close-settings-btn').addEventListener('click', () => closeModal('settings-modal'));
+document.getElementById('close-detail-btn').addEventListener('click',   () => closeModal('detail-modal'));
+
+// ══ DETAIL VIEW ════════════════════════════════
+function openDetail(id) {
+  const s = sightings.find(x => x.id === id);
+  if (!s) return;
+  document.getElementById('detail-content').innerHTML = `
+    <div class="detail-header">
+      <div class="detail-emoji">${birdEmoji(s.species)}</div>
+      <div><div class="detail-name">${s.species || 'Unknown'}</div><div class="detail-latin">${s.latin || ''}</div></div>
+    </div>
+    ${s.photoThumb ? `<img src="${s.photoThumb}" style="width:100%;border-radius:16px;margin-bottom:16px;max-height:200px;object-fit:cover" />` : ''}
+    <div class="detail-chip-row" style="margin-bottom:16px">
+      ${s.aiIdentified ? '<span class="detail-chip" style="color:var(--sky)">🤖 AI Identified</span>' : ''}
+      ${s.rarity       ? `<span class="detail-chip">${s.rarity}</span>` : ''}
+      ${s.location     ? `<span class="detail-chip">📍 ${s.location}</span>` : ''}
+      <span class="detail-chip">${new Date(s.timestamp).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span>
+    </div>
+    ${s.aiDescription ? `<div class="detail-section"><h4>🤖 AI Description</h4><div class="detail-text">${escHtml(s.aiDescription)}</div></div>` : ''}
+    ${s.notes         ? `<div class="detail-section"><h4>📝 My Notes</h4><div class="detail-text">${escHtml(s.notes)}</div></div>` : ''}
+    <div style="height:12px"></div>`;
+  openModal('detail-modal');
+}
+
+// ══ PHOTO UPLOAD ════════════════════════════════
+document.getElementById('photo-input').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const dataUrl = ev.target.result;
+    photob64 = dataUrl.split(',')[1];
+    const preview = document.getElementById('upload-preview');
+    preview.src = dataUrl; preview.style.display = 'block';
+    document.getElementById('upload-icon').textContent = '✅';
+    document.getElementById('upload-text').textContent = file.name;
+    document.getElementById('upload-hint').textContent = `${(file.size/1024).toFixed(0)} KB — ready for AI`;
+    setAiStatus('','📸 Photo loaded — press Identify!');
+  };
+  reader.readAsDataURL(file);
+});
+
+function setAiStatus(type, msg, spin) {
+  const el = document.getElementById('ai-status');
+  el.className = `ai-status ${type}`;
+  el.innerHTML = (spin ? '<div class="spinner"></div>' : '') + `<span>${escHtml(msg)}</span>`;
+}
+
+// ══ AI IDENTIFICATION ══════════════════════════
+async function identifyWithAI() {
+  const url   = document.getElementById('ollama-url').value.trim();
+  const model = document.getElementById('ollama-model').value;
+  if (!photob64) { setAiStatus('error','❌ Please upload a photo first.'); return; }
+  setAiStatus('thinking','Sending to Ollama…',true);
+  const prompt = `You are an expert ornithologist. Analyze this image and identify the bird.
+Return ONLY valid JSON in this format:
+{"species":"Common Name","latin":"Genus species","confidence":"high|medium|low","description":"2-3 sentences about key features and habitat","tips":"one practical birding tip"}
+If no bird: {"species":null,"error":"No bird detected"}`;
+  try {
+    const resp = await fetch(`${url}/api/generate`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ model, prompt, images:[photob64], stream:false, format:'json' })
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    let r;
+    try { r = JSON.parse(data.response); } catch { r = { error: 'Parse error', raw: data.response }; }
+    if (r.error && !r.species) {
+      setAiStatus('error',`❌ ${r.error}`);
+    } else {
+      document.getElementById('species-input').value = r.species || '';
+      document.getElementById('latin-input').value   = r.latin   || '';
+      _aiDesc = r.description || ''; _aiTip = r.tips || '';
+      setAiStatus('success',`✅ ${r.species} (${r.confidence || 'medium'} confidence)`);
+    }
+  } catch (err) {
+    setAiStatus('error',`❌ ${err.message}. Is Ollama running? Try: OLLAMA_ORIGINS=* ollama serve`);
+  }
+}
+document.getElementById('ai-identify-btn').addEventListener('click', identifyWithAI);
+
+// ══ SAVE SIGHTING ══════════════════════════════
+function resetForm() {
+  ['species-input','latin-input','location-input','behavior-input'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('rarity-select').value = 'common';
+  document.getElementById('upload-preview').style.display = 'none';
+  document.getElementById('upload-icon').textContent = '📸';
+  document.getElementById('upload-text').textContent = 'Tap to add a photo';
+  document.getElementById('upload-hint').textContent = 'JPG, PNG, WEBP — for AI identification';
+  document.getElementById('photo-input').value = '';
+  document.getElementById('ollama-url').value   = ollamaUrl;
+  document.getElementById('ollama-model').value = ollamaMdl;
+  setAiStatus('','📡 Upload a photo and press Identify');
+  photob64 = null; _aiDesc = ''; _aiTip = '';
+}
+
+document.getElementById('save-sighting-btn').addEventListener('click', () => {
+  const species = document.getElementById('species-input').value.trim();
+  if (!species) { alert('Please enter a species name!'); return; }
+  ollamaUrl = document.getElementById('ollama-url').value.trim();
+  ollamaMdl = document.getElementById('ollama-model').value;
+  const preview = document.getElementById('upload-preview');
+  const thumb   = preview.style.display !== 'none' ? preview.src : null;
+  sightings.push({
+    id:            `s_${Date.now()}`,
+    species,
+    latin:         document.getElementById('latin-input').value.trim(),
+    location:      document.getElementById('location-input').value.trim(),
+    notes:         document.getElementById('behavior-input').value.trim(),
+    rarity:        document.getElementById('rarity-select').value,
+    aiIdentified:  !!_aiDesc,
+    aiDescription: _aiDesc || null,
+    aiTip:         _aiTip  || null,
+    photoThumb:    thumb,
+    timestamp:     Date.now()
+  });
+  persist();
+  updateStats();
+  renderRecent();
+  closeModal('log-modal');
+  showPage('home');
+  resetForm();
+});
+
+document.getElementById('btn-refresh').addEventListener('click', () => { renderRecent(); updateStats(); });
+
+document.getElementById('clear-log-btn').addEventListener('click', () => {
+  if (confirm('Clear all sightings? This cannot be undone.')) {
+    sightings = []; persist(); updateStats(); renderAll(); renderRecent();
+  }
+});
+
+document.getElementById('ai-chat-mini-btn').addEventListener('click', () => { closeModal('log-modal'); showPage('ai'); });
+
+// ══ OLLAMA CHAT ════════════════════════════════
+async function checkOllama() {
+  const dot  = document.getElementById('ollama-status-dot');
+  const text = document.getElementById('ollama-status-text');
+  const mdl  = document.getElementById('ollama-model-text');
+  try {
+    const r = await fetch(`${ollamaUrl}/api/tags`, { signal: AbortSignal.timeout(3000) });
+    if (r.ok) {
+      const d = await r.json();
+      const models = (d.models || []).map(m => m.name).join(', ') || 'none pulled yet';
+      dot.className  = 'status-dot online';
+      text.textContent = 'Ollama Online ✅';
+      mdl.textContent  = `Available: ${models}`;
+    } else throw new Error();
+  } catch {
+    dot.className  = 'status-dot offline';
+    text.textContent = 'Ollama Offline ❌';
+    mdl.textContent  = 'Run: OLLAMA_ORIGINS=* ollama serve';
+  }
+}
+
+async function sendChat() {
+  const input = document.getElementById('chat-input');
+  const msgs  = document.getElementById('chat-msgs');
+  const text  = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  msgs.innerHTML += `<div class="msg user"><div class="msg-bubble">${escHtml(text)}</div><div class="msg-sender">You</div></div>`;
+  const tid = 'think_' + Date.now();
+  msgs.innerHTML += `<div class="msg ai" id="${tid}"><div class="msg-bubble" style="display:flex;align-items:center;gap:8px"><div class="spinner"></div>Thinking…</div></div>`;
+  msgs.scrollTop = msgs.scrollHeight;
+  const sys = `You are WingLog AI, an expert ornithologist and field guide assistant. Today is ${new Date().toDateString()}. The user has ${sightings.length} sightings and ${new Set(sightings.map(s=>s.species)).size} unique species. Be concise, enthusiastic, and use bird emojis liberally.`;
+  try {
+    const r = await fetch(`${ollamaUrl}/api/generate`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ model: ollamaMdl, system: sys, prompt: text, stream: false })
+    });
+    const d = await r.json();
+    document.getElementById(tid).outerHTML = `
+      <div class="msg ai"><div class="msg-bubble">${escHtml(d.response || 'No response')}</div><div class="msg-sender">WingLog AI · ${ollamaMdl}</div></div>`;
+  } catch (err) {
+    document.getElementById(tid).outerHTML = `
+      <div class="msg ai"><div class="msg-bubble" style="color:var(--coral)">❌ ${escHtml(err.message)}</div></div>`;
+  }
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+document.getElementById('chat-send-btn').addEventListener('click', sendChat);
+document.getElementById('chat-input').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
+document.getElementById('check-ollama-btn').addEventListener('click', checkOllama);
+
+// ══ SEED DEMO DATA ════════════════════════════
+(function seedDemo() {
+  if (sightings.length > 0) return;
+  sightings = [
+    { id:'d1', species:'Peregrine Falcon',       latin:'Falco peregrinus',        location:'City Waterfront',  notes:'Diving on pigeons near the bridge. Incredible speed!',         rarity:'rare',     aiIdentified:true,  aiDescription:'The Peregrine Falcon is the fastest animal on Earth at over 240 mph in a dive. Identified by its dark helmet pattern and slate-grey back.',          timestamp: Date.now()-3*3600000 },
+    { id:'d2', species:'Black-capped Chickadee', latin:'Poecile atricapillus',    location:'City Park',        notes:'Flitting between feeders. Very bold and inquisitive.',          rarity:'common',   aiIdentified:false, aiDescription:null,                                                                                                                                            timestamp: Date.now()-7*3600000 },
+    { id:'d3', species:'Blue Jay',               latin:'Cyanocitta cristata',     location:'Backyard Oak',     notes:'Caching acorns for winter. Loud alarm calls.',                  rarity:'common',   aiIdentified:true,  aiDescription:'Blue Jays are highly intelligent corvids. They can mimic hawk calls to scatter other birds and are key oak forest regenerators through seed caching.', timestamp: Date.now()-2*86400000 },
+    { id:'d4', species:'Ruby-throated Hummingbird', latin:'Archilochus colubris', location:'Garden',           notes:'Last one of the season before migration to Central America.', rarity:'uncommon', aiIdentified:false, aiDescription:null,                                                                                                                                            timestamp: Date.now()-3*86400000 },
+  ];
+  persist();
+})();
+
+// ══ INIT ══════════════════════════════════════
+updateStats();
+renderRecent();
+</script>
+</body>
+</html>
